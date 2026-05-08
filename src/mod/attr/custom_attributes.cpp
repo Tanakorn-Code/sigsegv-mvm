@@ -4066,35 +4066,51 @@ namespace Mod::Attr::Custom_Attributes
 
 	DETOUR_DECL_MEMBER_CALL_CONVENTION(__gcc_regcall, int, CTFRadiusDamageInfo_ApplyToEntity, CBaseEntity *ent)
 	{
-		auto info = reinterpret_cast<CTFRadiusDamageInfo *>(this);
-		if (hit_entities_explosive_max != 0 && hit_entities_explosive >= hit_entities_explosive_max)
-			return 0;
-		int healthpre = ent->GetHealth();
-		//DevMsg("Applytoentity damage %f %d\n", info->m_DmgInfo->GetDamage(), ent->CollisionProp()->IsPointInBounds(info->m_vecOrigin));
-		auto result = DETOUR_MEMBER_CALL(ent);
-		CTFBaseRocket *rocket = rtti_cast<CTFBaseRocket *>(ent);
-		CTFWeaponBaseGrenadeProj *grenade = rtti_cast<CTFWeaponBaseGrenadeProj *>(ent);
-		CTFBaseProjectile *proj = rocket != nullptr ? (CTFBaseProjectile *)rocket : (CTFBaseProjectile *)grenade;
-
-		if (proj != nullptr) {
-			float detTime = 0;
-			CALL_ATTRIB_HOOK_FLOAT_ON_OTHER(proj->GetOriginalLauncher(), detTime, chain_explosion);
-			if (detTime != 0) {
-				trace_t tr;
-				Vector vecSpot = proj->GetAbsOrigin();
-				UTIL_TraceLine(vecSpot, vecSpot + Vector(0, 0, -32), MASK_SHOT_HULL, proj, COLLISION_GROUP_NONE, &tr);
-				if (rocket != nullptr) {
-					rocket->Explode(&tr, GetWorldEntity());
-				}
-				else {
-					grenade->Explode(&tr, proj->GetDamageType());
-				}
-			}
-		}
-		if (ent->GetHealth() != healthpre) {
-			hit_entities_explosive++;
-		}
-		return result;
+	    auto info = reinterpret_cast<CTFRadiusDamageInfo *>(this);
+	    if (hit_entities_explosive_max != 0 && hit_entities_explosive >= hit_entities_explosive_max)
+	        return 0;
+	
+	    EHANDLE hEnt = ent;
+	    int healthpre = ent->GetHealth();
+	    auto result = DETOUR_MEMBER_CALL(ent);
+	
+	    if (hEnt == nullptr || !hEnt.IsValid()) {
+	        hit_entities_explosive++;
+	        return result;
+	    }
+	
+	    CTFBaseRocket *rocket = rtti_cast<CTFBaseRocket *>(ent);
+	    CTFWeaponBaseGrenadeProj *grenade = rtti_cast<CTFWeaponBaseGrenadeProj *>(ent);
+	    CTFBaseProjectile *proj = rocket != nullptr ? (CTFBaseProjectile *)rocket : (CTFBaseProjectile *)grenade;
+	
+	    if (proj != nullptr) {
+	        CBaseEntity *launcher = proj->GetOriginalLauncher();
+	        if (launcher != nullptr) {
+	            float detTime = 0;
+	            CALL_ATTRIB_HOOK_FLOAT_ON_OTHER(launcher, detTime, chain_explosion);
+	            
+	            if (detTime != 0) {
+	                trace_t tr;
+	                Vector vecSpot = proj->GetAbsOrigin();
+	                UTIL_TraceLine(vecSpot, vecSpot + Vector(0, 0, -32), MASK_SHOT_HULL, proj, COLLISION_GROUP_NONE, &tr);
+	                
+	                if (rocket != nullptr) {
+	                    rocket->Explode(&tr, GetWorldEntity());
+	                }
+	                else {
+	                    grenade->Explode(&tr, proj->GetDamageType());
+	                }
+	            }
+	        }
+	    }
+	
+	    if (hEnt != nullptr && hEnt.IsValid()) {
+	        if (hEnt->GetHealth() != healthpre) {
+	            hit_entities_explosive++;
+	        }
+	    }
+	
+	    return result;
 	}
 	
 	class PenetrationNumberModule : public EntityModule
