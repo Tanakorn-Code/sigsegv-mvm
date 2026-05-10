@@ -4067,6 +4067,7 @@ namespace Mod::Attr::Custom_Attributes
 	DETOUR_DECL_MEMBER_CALL_CONVENTION(__gcc_regcall, int, CTFRadiusDamageInfo_ApplyToEntity, CBaseEntity *ent)
 	{
 		auto info = reinterpret_cast<CTFRadiusDamageInfo *>(this);
+	
 		if (ent == nullptr)
 			return 0;
 	
@@ -4076,12 +4077,8 @@ namespace Mod::Attr::Custom_Attributes
 			return 0;
 		}
 	
-		EHANDLE hEnt = ent;
 		int healthpre = ent->GetHealth();
 		auto result = DETOUR_MEMBER_CALL(ent);
-	
-		if (hEnt == nullptr || !hEnt.IsValid())
-			return result;
 	
 		if (ent->GetHealth() != healthpre) {
 			hit_entities_explosive++;
@@ -4092,21 +4089,20 @@ namespace Mod::Attr::Custom_Attributes
 		if (inflictor == nullptr)
 			return result;
 	
-		EHANDLE hProj = inflictor;
-	
-		if (hProj == nullptr || !hProj.IsValid())
-			return result;
-	
 		CTFBaseRocket *rocket =
 			rtti_cast<CTFBaseRocket *>(inflictor);
 	
 		CTFWeaponBaseGrenadeProj *grenade =
 			rtti_cast<CTFWeaponBaseGrenadeProj *>(inflictor);
 	
-		CTFBaseProjectile *proj =
-			rocket != nullptr ?
-			(CTFBaseProjectile *)rocket :
-			(CTFBaseProjectile *)grenade;
+		CTFBaseProjectile *proj = nullptr;
+	
+		if (rocket != nullptr) {
+			proj = (CTFBaseProjectile *)rocket;
+		}
+		else if (grenade != nullptr) {
+			proj = (CTFBaseProjectile *)grenade;
+		}
 	
 		if (proj == nullptr)
 			return result;
@@ -4114,11 +4110,6 @@ namespace Mod::Attr::Custom_Attributes
 		CBaseEntity *launcher = proj->GetOriginalLauncher();
 	
 		if (launcher == nullptr)
-			return result;
-	
-		EHANDLE hLauncher = launcher;
-	
-		if (hLauncher == nullptr || !hLauncher.IsValid())
 			return result;
 	
 		float detTime = 0.0f;
@@ -4132,14 +4123,15 @@ namespace Mod::Attr::Custom_Attributes
 		if (detTime <= 0.0f)
 			return result;
 	
-		static bool inChainExplosion = false;
+		static bool inExplode = false;
 	
-		if (inChainExplosion)
+		if (inExplode)
 			return result;
 	
-		inChainExplosion = true;
+		inExplode = true;
 	
 		trace_t tr;
+	
 		Vector vecSpot = proj->GetAbsOrigin();
 	
 		UTIL_TraceLine(
@@ -4158,7 +4150,7 @@ namespace Mod::Attr::Custom_Attributes
 			grenade->Explode(&tr, proj->GetDamageType());
 		}
 	
-		inChainExplosion = false;
+		inExplode = false;
 	
 		return result;
 	}
