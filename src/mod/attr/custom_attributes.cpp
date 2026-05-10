@@ -4092,7 +4092,9 @@ namespace Mod::Attr::Custom_Attributes
 		if (inflictor == nullptr)
 			return result;
 	
-		if (inflictor->IsMarkedForDeletion())
+		EHANDLE hProj = inflictor;
+	
+		if (hProj == nullptr || !hProj.IsValid())
 			return result;
 	
 		CTFBaseRocket *rocket =
@@ -4103,13 +4105,10 @@ namespace Mod::Attr::Custom_Attributes
 	
 		CTFBaseProjectile *proj =
 			rocket != nullptr ?
-			static_cast<CTFBaseProjectile *>(rocket) :
-			static_cast<CTFBaseProjectile *>(grenade);
+			(CTFBaseProjectile *)rocket :
+			(CTFBaseProjectile *)grenade;
 	
 		if (proj == nullptr)
-			return result;
-	
-		if (proj->IsMarkedForDeletion())
 			return result;
 	
 		CBaseEntity *launcher = proj->GetOriginalLauncher();
@@ -4117,7 +4116,9 @@ namespace Mod::Attr::Custom_Attributes
 		if (launcher == nullptr)
 			return result;
 	
-		if (launcher->IsMarkedForDeletion())
+		EHANDLE hLauncher = launcher;
+	
+		if (hLauncher == nullptr || !hLauncher.IsValid())
 			return result;
 	
 		float detTime = 0.0f;
