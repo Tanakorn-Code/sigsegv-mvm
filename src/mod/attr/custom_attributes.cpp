@@ -4064,17 +4064,23 @@ namespace Mod::Attr::Custom_Attributes
 		THINK_FUNC_SET(arrow, UpdateArrowTrail, gpGlobals->curtime+0.01f);
 	}
 
-	static void DoChainExplosion(CHandle<CTFBaseProjectile> hProj)
+	THINK_FUNC_DECL(ChainExplosionThink)
 	{
-		if (!hProj.IsValid())
+		auto proj = reinterpret_cast<CTFBaseProjectile *>(this);
+		if (proj == nullptr || proj->IsMarkedForDeletion() || proj->edict() == nullptr)
 			return;
-	
-		CTFBaseProjectile *proj = hProj.Get();
 	
 		trace_t tr;
 		Vector vecSpot = proj->GetAbsOrigin();
 	
-		UTIL_TraceLine(vecSpot,vecSpot + Vector(0, 0, -32),MASK_SHOT_HULL,proj,COLLISION_GROUP_NONE,&tr);
+		UTIL_TraceLine(
+			vecSpot,
+			vecSpot + Vector(0, 0, -32),
+			MASK_SHOT_HULL,
+			proj,
+			COLLISION_GROUP_NONE,
+			&tr
+		);
 	
 		if (auto rocket = rtti_cast<CTFBaseRocket *>(proj)) {
 			rocket->Explode(&tr, GetWorldEntity());
@@ -4087,6 +4093,8 @@ namespace Mod::Attr::Custom_Attributes
 	DETOUR_DECL_MEMBER_CALL_CONVENTION(__gcc_regcall, int, CTFRadiusDamageInfo_ApplyToEntity, CBaseEntity *ent)
 	{
 		auto info = reinterpret_cast<CTFRadiusDamageInfo *>(this);
+		if (ent == nullptr)
+			return 0;
 	
 		if (hit_entities_explosive_max != 0 &&
 			hit_entities_explosive >= hit_entities_explosive_max)
@@ -4094,49 +4102,34 @@ namespace Mod::Attr::Custom_Attributes
 			return 0;
 		}
 	
-		EHANDLE hEnt = ent;
-	
-		if (hEnt == nullptr || !hEnt.IsValid())
-			return 0;
-	
 		int healthpre = ent->GetHealth();
 		auto result = DETOUR_MEMBER_CALL(ent);
-	
-		if (hEnt == nullptr || !hEnt.IsValid()) {
+
+		if (!ent->IsMarkedForDeletion() && ent->GetHealth() != healthpre) {
 			hit_entities_explosive++;
-			return result;
 		}
 	
 		CBaseEntity *inflictor = info->m_pInflictor;
+		if (inflictor == nullptr || inflictor->IsMarkedForDeletion())
+			return result;
+	
 		auto proj = rtti_cast<CTFBaseProjectile *>(inflictor);
+		if (proj != nullptr && !proj->IsMarkedForDeletion()) {
 	
-		if (proj != nullptr) {
 			CBaseEntity *launcher = proj->GetOriginalLauncher();
-	
-			if (launcher != nullptr) {
+			if (launcher != nullptr && !launcher->IsMarkedForDeletion() && launcher->edict() != nullptr) {
 	
 				float detTime = 0.0f;
-				CALL_ATTRIB_HOOK_FLOAT_ON_OTHER(launcher, detTime, chain_explosion);
+				CALL_ATTRIB_HOOK_FLOAT_ON_OTHER(
+					launcher,
+					detTime,
+					chain_explosion
+				);
 	
 				if (detTime > 0.0f) {
-	
-					CHandle<CTFBaseProjectile> hProj = proj;
-	
-					THINK_FUNC_SET(proj, "ChainExplosionThink",
-						[hProj](CBaseEntity *){
-							DoChainExplosion(hProj);
-						});
-	
-					proj->SetNextThink(gpGlobals->curtime + detTime);
+					THINK_FUNC_SET(proj, ChainExplosionThink, gpGlobals->curtime + detTime);
 				}
 			}
-		}
-	
-		if (hEnt != nullptr &&
-			hEnt.IsValid() &&
-			hEnt->GetHealth() != healthpre)
-		{
-			hit_entities_explosive++;
 		}
 	
 		return result;
