@@ -4067,64 +4067,39 @@ namespace Mod::Attr::Custom_Attributes
 	DETOUR_DECL_MEMBER_CALL_CONVENTION(__gcc_regcall, int, CTFRadiusDamageInfo_ApplyToEntity, CBaseEntity *ent)
 	{
 		auto info = reinterpret_cast<CTFRadiusDamageInfo *>(this);
-
-		if (ent == nullptr)
-			return 0;
-	
 		if (hit_entities_explosive_max != 0 && hit_entities_explosive >= hit_entities_explosive_max)
 			return 0;
-	
+			
 		int healthpre = ent->GetHealth();
+		
 		auto result = DETOUR_MEMBER_CALL(ent);
-	
-		if (!ent->IsMarkedForDeletion() && ent->GetHealth() != healthpre) {
-			hit_entities_explosive++;
-		}
-	
-		if (ent->IsMarkedForDeletion())
-			return result;
-	
 		CTFBaseRocket *rocket = rtti_cast<CTFBaseRocket *>(ent);
 		CTFWeaponBaseGrenadeProj *grenade = rtti_cast<CTFWeaponBaseGrenadeProj *>(ent);
 		CTFBaseProjectile *proj = rocket != nullptr ? (CTFBaseProjectile *)rocket : (CTFBaseProjectile *)grenade;
 	
-		if (proj != nullptr && !proj->IsMarkedForDeletion()) {
+		if (proj != nullptr) {
+			float detTime = 0;
+			CBaseEntity *launcher = proj->GetOriginalLauncher();
 			
-			CBaseEntity *launcher = proj->GetOriginalLauncher(); 
-
-			if (launcher != nullptr && !launcher->IsMarkedForDeletion() && launcher->edict() != nullptr) {
-				
-				float detTime = 0.0f;
+			if (launcher != nullptr) {
 				CALL_ATTRIB_HOOK_FLOAT_ON_OTHER(launcher, detTime, chain_explosion);
 				
-				if (detTime > 0.0f) {
-					
-					CHandle<CTFBaseProjectile> hProj = proj;
-	
-					THINK_FUNC_SET(proj, "ChainExplosionThink", [hProj](CBaseEntity *pEnt) {
-						
-						if (!hProj.IsValid())
-							return;
-	
-						CTFBaseProjectile *pProj = hProj.Get();
-						if (pProj == nullptr || pProj->IsMarkedForDeletion() || pProj->edict() == nullptr)
-							return;
-	
-						trace_t tr;
-						Vector vecSpot = pProj->GetAbsOrigin();
-						UTIL_TraceLine(vecSpot, vecSpot + Vector(0, 0, -32), MASK_SHOT_HULL, pProj, COLLISION_GROUP_NONE, &tr);
-	
-						if (auto r = rtti_cast<CTFBaseRocket *>(pProj)) {
-							r->Explode(&tr, GetWorldEntity());
-						}
-						else if (auto g = rtti_cast<CTFWeaponBaseGrenadeProj *>(pProj)) {
-							g->Explode(&tr, pProj->GetDamageType());
-						}
-					});
-	
-					proj->SetNextThink(gpGlobals->curtime + detTime, "ChainExplosionThink");
+				if (detTime != 0) {
+					trace_t tr;
+					Vector vecSpot = proj->GetAbsOrigin();
+					UTIL_TraceLine(vecSpot, vecSpot + Vector(0, 0, -32), MASK_SHOT_HULL, proj, COLLISION_GROUP_NONE, &tr);
+					if (rocket != nullptr) {
+						rocket->Explode(&tr, GetWorldEntity());
+					}
+					else {
+						grenade->Explode(&tr, proj->GetDamageType());
+					}
 				}
 			}
+		}
+		
+		if (ent->GetHealth() != healthpre) {
+			hit_entities_explosive++;
 		}
 		
 		return result;
