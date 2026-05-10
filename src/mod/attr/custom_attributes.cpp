@@ -4063,48 +4063,8 @@ namespace Mod::Attr::Custom_Attributes
 		DETOUR_MEMBER_CALL();
 		THINK_FUNC_SET(arrow, UpdateArrowTrail, gpGlobals->curtime+0.01f);
 	}
-
-	THINK_FUNC_DECL(ChainExplosionThink)
-	{
-		auto proj = reinterpret_cast<CTFBaseProjectile *>(this);
 	
-		if (proj == nullptr)
-			return;
-	
-		if (proj->IsMarkedForDeletion())
-			return;
-	
-		if (proj->edict() == nullptr)
-			return;
-	
-		trace_t tr;
-		Vector vecSpot = proj->GetAbsOrigin();
-	
-		UTIL_TraceLine(
-			vecSpot,
-			vecSpot + Vector(0, 0, -32),
-			MASK_SHOT_HULL,
-			proj,
-			COLLISION_GROUP_NONE,
-			&tr
-		);
-	
-		if (auto rocket = rtti_cast<CTFBaseRocket *>(proj)) {
-			rocket->Explode(&tr, GetWorldEntity());
-			return;
-		}
-	
-		if (auto grenade = rtti_cast<CTFWeaponBaseGrenadeProj *>(proj)) {
-			grenade->Explode(&tr, proj->GetDamageType());
-			return;
-		}
-	}
-	
-	DETOUR_DECL_MEMBER_CALL_CONVENTION(
-		__gcc_regcall,
-		int,
-		CTFRadiusDamageInfo_ApplyToEntity,
-		CBaseEntity *ent)
+	DETOUR_DECL_MEMBER_CALL_CONVENTION(__gcc_regcall, int, CTFRadiusDamageInfo_ApplyToEntity, CBaseEntity *ent)
 	{
 		auto info = reinterpret_cast<CTFRadiusDamageInfo *>(this);
 	
@@ -4117,61 +4077,65 @@ namespace Mod::Attr::Custom_Attributes
 			return 0;
 		}
 	
-		EHANDLE hEnt = ent;
-	
 		int healthpre = ent->GetHealth();
 		auto result = DETOUR_MEMBER_CALL(ent);
 	
-		if (hEnt != nullptr &&
-			hEnt.IsValid() &&
-			hEnt->GetHealth() != healthpre)
-		{
+		if (!ent->IsMarkedForDeletion() && ent->GetHealth() != healthpre) {
 			hit_entities_explosive++;
 		}
 	
 		CBaseEntity *inflictor = info->m_pInflictor;
-	
-		if (inflictor == nullptr)
-			return result;
-	
-		if (inflictor->IsMarkedForDeletion())
+		if (inflictor == nullptr || inflictor->IsMarkedForDeletion())
 			return result;
 	
 		auto proj = rtti_cast<CTFBaseProjectile *>(inflictor);
+		if (proj != nullptr && !proj->IsMarkedForDeletion()) {
 	
-		if (proj == nullptr)
-			return result;
+			CBaseEntity *launcher = proj->GetOriginalLauncher();
+			if (launcher != nullptr && !launcher->IsMarkedForDeletion() && launcher->edict() != nullptr) {
 	
-		if (proj->IsMarkedForDeletion())
-			return result;
-		
-		if (proj->GetNextThink() > gpGlobals->curtime)
-			return result;
+				float detTime = 0.0f;
+				CALL_ATTRIB_HOOK_FLOAT_ON_OTHER(
+					launcher,
+					detTime,
+					chain_explosion
+				);
 	
-		CBaseEntity *launcher = proj->GetOriginalLauncher();
+				if (detTime > 0.0f) {
+					CHandle<CTFBaseProjectile> hProj = proj;
+					THINK_FUNC_SET(proj, "ChainExplosionThink", [hProj](CBaseEntity *pEnt) {
+						
+						if (!hProj.IsValid())
+							return;
 	
-		if (launcher == nullptr)
-			return result;
+						CTFBaseProjectile *pProj = hProj.Get();
+						if (pProj == nullptr || pProj->IsMarkedForDeletion() || pProj->edict() == nullptr)
+							return;
 	
-		if (launcher->IsMarkedForDeletion())
-			return result;
+						trace_t tr;
+						Vector vecSpot = pProj->GetAbsOrigin();
 	
-		if (launcher->edict() == nullptr)
-			return result;
+						UTIL_TraceLine(
+							vecSpot,
+							vecSpot + Vector(0, 0, -32),
+							MASK_SHOT_HULL,
+							pProj,
+							COLLISION_GROUP_NONE,
+							&tr
+						);
 	
-		float detTime = 0.0f;
+						if (auto rocket = rtti_cast<CTFBaseRocket *>(pProj)) {
+							rocket->Explode(&tr, GetWorldEntity());
+						}
+						else if (auto grenade = rtti_cast<CTFWeaponBaseGrenadeProj *>(pProj)) {
+							grenade->Explode(&tr, pProj->GetDamageType());
+						}
+					});
 	
-		CALL_ATTRIB_HOOK_FLOAT_ON_OTHER(
-			launcher,
-			detTime,
-			chain_explosion
-		);
-	
-		if (detTime <= 0.0f)
-			return result;
-	
-		THINK_FUNC_SET(proj, ChainExplosionThink);
-		proj->SetNextThink(gpGlobals->curtime + detTime);
+					proj->SetNextThink(gpGlobals->curtime + detTime, "ChainExplosionThink");
+				}
+			}
+		}
 	
 		return result;
 	}
